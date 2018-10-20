@@ -7,21 +7,22 @@ import pandas as pd
 
 
 # Constants used in execution
-batch_size = 64  # Batch size for training.
-epochs = 5  # Number of epochs to train for.
-latent_dim = 256  # Latent dimensionality of the encoding space.
-num_samples = 10000  # Number of samples to train on.
-data_path = 'jokes.csv'  # Path to the data txt file on disk.
+TRAIN_MODEL = False  # True to run training. False to do just forward pass.
+BATCH_SIZE = 64  # Batch size for training.
+EPOCHS = 5  # Number of epochs to train for.
+LATENT_DIM = 256  # Latent dimensionality of the encoding space.
+DATA_PATH = 'jokes.csv'  # Path to the data txt file on disk.
+MODEL_FILE = 's2s.h5'   # Name of the model file saved to and loaded from disk.
 
 
 def train_model():
-    # Vectorize the data.
+    # Vector-ize the data.
     input_texts = []
     target_texts = []
     input_characters = set()
     target_characters = set()
 
-    jokes = pd.read_csv(data_path, header=0)
+    jokes = pd.read_csv(DATA_PATH, header=0)
     for _, row in enumerate(jokes.values):
         input_text, target_text = row[1].strip('\n'), row[2].strip('\n')
         # We use "tab" as the "start sequence" character
@@ -77,9 +78,9 @@ def train_model():
 
     # Define an input sequence and process it.
     encoder_inputs = Input(shape=(None, num_encoder_tokens))
-    encoder = LSTM(latent_dim, return_state=True)
+    encoder = LSTM(LATENT_DIM, return_state=True)
     encoder_outputs, state_h, state_c = encoder(encoder_inputs)
-    # We discard `encoder_outputs` and only keep the states.
+    # We discard 'encoder_outputs' and only keep the states.
     encoder_states = [state_h, state_c]
 
     # Set up the decoder, using `encoder_states` as initial state.
@@ -87,24 +88,24 @@ def train_model():
     # We set up our decoder to return full output sequences,
     # and to return internal states as well. We don't use the
     # return states in the training model, but we will use them in inference.
-    decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
+    decoder_lstm = LSTM(LATENT_DIM, return_sequences=True, return_state=True)
     decoder_outputs, _, _ = decoder_lstm(decoder_inputs,
                                          initial_state=encoder_states)
     decoder_dense = Dense(num_decoder_tokens, activation='softmax')
     decoder_outputs = decoder_dense(decoder_outputs)
 
     # Define the model that will turn
-    # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
+    # 'encoder_input_data' & 'decoder_input_data' into 'decoder_target_data'
     model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
 
     # Run training
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy')
     model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
-              batch_size=batch_size,
-              epochs=epochs,
+              batch_size=BATCH_SIZE,
+              epochs=EPOCHS,
               validation_split=0.2)
     # Save model
-    model.save('s2s.h5')
+    model.save(MODEL_FILE)
 
     # Next: inference mode (sampling).
     # Here's the drill:
@@ -117,8 +118,8 @@ def train_model():
     # Define sampling models
     encoder_model = Model(encoder_inputs, encoder_states)
 
-    decoder_state_input_h = Input(shape=(latent_dim,))
-    decoder_state_input_c = Input(shape=(latent_dim,))
+    decoder_state_input_h = Input(shape=(LATENT_DIM,))
+    decoder_state_input_c = Input(shape=(LATENT_DIM,))
     decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
     decoder_outputs, state_h, state_c = decoder_lstm(
         decoder_inputs, initial_state=decoder_states_inputs)
@@ -137,6 +138,9 @@ def train_model():
 
 
 def decode_sequence(input_seq):
+    model = Model.load_model(MODEL_FILE)
+    model.inputs
+
     # Encode the input as state vectors.
     states_value = encoder_model.predict(input_seq)
 
@@ -176,9 +180,9 @@ def decode_sequence(input_seq):
 
 def forward_pass(jokes_needing_punchlines):
     """
-
-    :param jokes_needing_punchlines:
-    :return:
+    Generates
+    :param jokes_needing_punchlines: List of joke setup strings.
+    :return: List of 2-tuples containing joke setup/generated punchline pairs.
     """
     decoded_sentences = []
 
@@ -191,7 +195,14 @@ def forward_pass(jokes_needing_punchlines):
     return decoded_sentences
 
 
+# ###################################
 # Let's get down to (funny) business!
+# ###################################
+# Train the model if config'd to do so
+if TRAIN_MODEL:
+    train_model()
+
+# After model is trained, run forward pass with new joke setups that need punchlines
 punchlines = forward_pass(['Why did the chicken cross the road?',
                            'Who let the dogs out?',
                            'How much wood would a woodchuck chuck?',
@@ -199,6 +210,7 @@ punchlines = forward_pass(['Why did the chicken cross the road?',
                            'When is the best time to wear a hat?',
                            'Where is the best Data Science city?'])
 
+# Let's see what was generated!
 for punchline in punchlines:
     print('-')
     print('Input sentence:', punchline[0])

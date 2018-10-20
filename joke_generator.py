@@ -4,15 +4,19 @@ from keras.models import Model
 from keras.layers import Input, LSTM, Dense
 import numpy as np
 import pandas as pd
+import pickle
 
 
 # Constants used in execution
-TRAIN_MODEL = False  # True to run training. False to do just forward pass.
+TRAIN_MODEL = True  # True to run training. False to do just forward pass.
 BATCH_SIZE = 64  # Batch size for training.
-EPOCHS = 5  # Number of epochs to train for.
+EPOCHS = 1  # Number of epochs to train for.
 LATENT_DIM = 256  # Latent dimensionality of the encoding space.
 DATA_PATH = 'jokes.csv'  # Path to the data txt file on disk.
-MODEL_FILE = 's2s.h5'   # Name of the model file saved to and loaded from disk.
+TRAINING_MODEL_FILE = 'gridsai-qahumor-main.h5'   # Name of the main model file.
+ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder.h5'
+DECODER_MODEL_FILE = 'gridsai-qahumor-decoder.h5'
+PICKLE_FILE = 'gridsai-qahumor-pickle.pckl'
 
 
 def train_model():
@@ -105,7 +109,7 @@ def train_model():
               epochs=EPOCHS,
               validation_split=0.2)
     # Save model
-    model.save(MODEL_FILE)
+    model.save(TRAINING_MODEL_FILE)
 
     # Next: inference mode (sampling).
     # Here's the drill:
@@ -117,6 +121,7 @@ def train_model():
 
     # Define sampling models
     encoder_model = Model(encoder_inputs, encoder_states)
+    encoder_model.save(ENCODER_MODEL_FILE)
 
     decoder_state_input_h = Input(shape=(LATENT_DIM,))
     decoder_state_input_c = Input(shape=(LATENT_DIM,))
@@ -128,6 +133,7 @@ def train_model():
     decoder_model = Model(
         [decoder_inputs] + decoder_states_inputs,
         [decoder_outputs] + decoder_states)
+    decoder_model.save(DECODER_MODEL_FILE)
 
     # Reverse-lookup token index to decode sequences back to
     # something readable.
@@ -136,10 +142,18 @@ def train_model():
     reverse_target_char_index = dict(
         (i, char) for char, i in target_token_index.items())
 
+    # Pickle some data for use when decoding
+    pickle_file = open(PICKLE_FILE, 'wb')
+    pickle.dump([num_decoder_tokens, target_token_index, reverse_target_char_index, max_decoder_seq_length], pickle_file)
+    pickle_file.close()
+
 
 def decode_sequence(input_seq):
-    model = Model.load_model(MODEL_FILE)
-    model.inputs
+    # Load up models and data
+    encoder_model = Model.load_model(ENCODER_MODEL_FILE)
+    decoder_model = Model.load_model(DECODER_MODEL_FILE)
+    pickle_file = open(PICKLE_FILE, 'rb')
+    num_decoder_tokens, target_token_index, reverse_target_char_index, max_decoder_seq_length = pickle.load(pickle_file)
 
     # Encode the input as state vectors.
     states_value = encoder_model.predict(input_seq)

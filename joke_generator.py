@@ -194,7 +194,7 @@ def forward_pass(jokes_needing_punchlines):
     encoder_pickle_file = open(ENCODER_PICKLE_FILE, 'rb')
     max_encoder_seq_length = pickle.load(encoder_pickle_file)
     encoder_pickle_file.close()
-    decoder_pickle_file = open(ENCODER_PICKLE_FILE, 'rb')
+    decoder_pickle_file = open(DECODER_PICKLE_FILE, 'rb')
     max_decoder_seq_length = pickle.load(decoder_pickle_file)
     decoder_pickle_file.close()
 

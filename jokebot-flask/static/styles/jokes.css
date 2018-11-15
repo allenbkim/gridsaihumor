@@ -1,0 +1,28 @@
+.comedy-background {
+    background:url('../img/jokebot3000.jpg') no-repeat;
+    height:500px;
+    position:relative;
+}
+
+.joke-input {
+    position:absolute;
+    top:30px;
+    left:50px;
+    width:300px
+}
+
+.joke-button {
+    position:absolute;
+    top:60px;
+    left:50px;
+    height:50px;
+    width:170px;
+}
+
+.joke-output {
+    position:absolute;
+    top:50px;
+    left:500px;
+    width:270px;
+    height:100px;
+}

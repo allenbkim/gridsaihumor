@@ -8,11 +8,11 @@ import pickle
 
 
 # Constants used in execution
-TRAIN_MODEL = False  # True to run training. False to do just forward pass.
-BATCH_SIZE = 64  # Batch size for training.
-EPOCHS = 5  # Number of epochs to train for.
+TRAIN_MODEL = True  # True to run training. False to do just forward pass.
+BATCH_SIZE = 128  # Batch size for training.
+EPOCHS = 50  # Number of epochs to train for.
 LATENT_DIM = 256  # Latent dimensionality of the encoding space.
-DATA_PATH = 'jokes.csv'  # Path to the data txt file on disk.
+DATA_PATH = 'jokes_what_did_1.csv'  # Path to the data txt file on disk.
 TRAINING_MODEL_FILE = 'gridsai-qahumor-main-model.h5'   # Name of the main model file.
 ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder-model.h5'
 DECODER_MODEL_FILE = 'gridsai-qahumor-decoder-model.h5'
@@ -32,9 +32,10 @@ def train_model():
     input_texts = []
     target_texts = []
 
-    jokes = pd.read_csv(DATA_PATH, header=0)
+    jokes = pd.read_csv(DATA_PATH, header=  0)
     for _, row in enumerate(jokes.values):
-        input_text, target_text = row[1].strip('\n'), row[2].strip('\n')
+        # input_text, target_text = row[1].strip('\n'), row[2].strip('\n')
+        input_text, target_text = str(row[1]).strip('\n'), str(row[2]).strip('\n')
         # We use "tab" as the "start sequence" character
         # for the targets, and "\n" as "end sequence" character.
         target_text = '\t' + target_text + '\n'
@@ -170,7 +171,8 @@ def decode_sequence(input_seq, num_decoder_tokens, target_token_index, reverse_t
         # Exit condition: either hit max length
         # or find stop character.
         if (sampled_char == '\n' or
-           len(decoded_sentence) > max_decoder_seq_length):
+            sampled_char == '.' or
+	    len(decoded_sentence) > max_decoder_seq_length):
             stop_condition = True
 
         # Update the target sequence (of length 1).
@@ -195,7 +197,8 @@ def forward_pass(jokes_needing_punchlines):
     max_encoder_seq_length = pickle.load(encoder_pickle_file)
     encoder_pickle_file.close()
     decoder_pickle_file = open(DECODER_PICKLE_FILE, 'rb')
-    max_decoder_seq_length = pickle.load(decoder_pickle_file)
+    # max_decoder_seq_length = pickle.load(decoder_pickle_file)
+    max_decoder_seq_length = 50
     decoder_pickle_file.close()
 
     # Reverse-lookup token index to decode sequences back to something readable.
@@ -229,15 +232,14 @@ if TRAIN_MODEL:
     train_model()
 
 # After model is trained, run forward pass with new joke setups that need punchlines
-punchlines = forward_pass(['\tWhy did the chicken cross the road?\n',
-                           '\tWho let the dogs out?\n',
-                           '\tHow much wood would a woodchuck chuck?\n',
-                           '\tWhat did the Trojan say to the Bruin?\n',
-                           '\tWhat do you get when you cross a Data Scientist with an AI Engineer??\n',
-                           '\tWhere did the pig go to buy some food?\n'])
-
+sents = ['\twhat did one dna say to the other dna?\n',
+                           '\twhat did 0 say to 8?\n',
+                           '\twhat did the trojan say to the bruin?\n',
+                           '\twhat did the fish say when it hit the wall?\n',
+                           '\twhat did mars say to saturn?\n']
+punchlines = forward_pass(sents[0:2])
 # Let's see what was generated!
-for punchline in punchlines:
+for punchline in punchlines[:4]:
     print('-')
     print('Input sentence:', punchline[0])
     print('Decoded sentence:', punchline[1])

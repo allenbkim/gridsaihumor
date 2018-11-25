@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from keras.models import Model, load_model
 from keras.layers import Input, LSTM, Dense
+from keras.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pickle
@@ -9,15 +10,28 @@ import pickle
 
 # Constants used in execution
 TRAIN_MODEL = True  # True to run training. False to do just forward pass.
-BATCH_SIZE = 128  # Batch size for training.
-EPOCHS = 50  # Number of epochs to train for.
+BATCH_SIZE = 256  # Batch size for training.
+EPOCHS = 250  # Number of epochs to train for.
+EPOCH_PERIOD = 10 # Period at which to save model
 LATENT_DIM = 256  # Latent dimensionality of the encoding space.
 DATA_PATH = 'jokes_what_did_1.csv'  # Path to the data txt file on disk.
-TRAINING_MODEL_FILE = 'gridsai-qahumor-main-model.h5'   # Name of the main model file.
-ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder-model.h5'
-DECODER_MODEL_FILE = 'gridsai-qahumor-decoder-model.h5'
-ENCODER_PICKLE_FILE = 'gridsai-qahumor-encoder-pickle.pckl'
-DECODER_PICKLE_FILE = 'gridsai-qahumor-decoder-pickle.pckl'
+# TRAINING_MODEL_FILE = 'gridsai-qahumor-main-model.h5'   # Name of the main model file.
+# ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder-model.h5'
+# DECODER_MODEL_FILE = 'gridsai-qahumor-decoder-model.h5'
+# ENCODER_PICKLE_FILE = 'gridsai-qahumor-encoder-pickle.pckl'
+# DECODER_PICKLE_FILE = 'gridsai-qahumor-decoder-pickle.pckl'
+
+# TRAINING_MODEL_FILE = 'gridsai-qahumor-main-model_{}_.h5'.format(EPOCHS)   # Name of the main model file.
+# ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder-model_{}_.h5'.format(EPOCHS)
+# DECODER_MODEL_FILE = 'gridsai-qahumor-decoder-model_{}_.h5'.format(EPOCHS)
+# ENCODER_PICKLE_FILE = 'gridsai-qahumor-encoder-pickle_{}_.pckl'.format(EPOCHS)
+# DECODER_PICKLE_FILE = 'gridsai-qahumor-decoder-pickle_{}_.pckl'.format(EPOCHS)
+
+TRAINING_MODEL_FILE = 'gridsai-qahumor-main-model_modified_{}_.h5'   # Name of the main model file.
+ENCODER_MODEL_FILE = 'gridsai-qahumor-encoder-model_modified_{}_.h5'
+DECODER_MODEL_FILE = 'gridsai-qahumor-decoder-model_modified_{}_.h5'
+ENCODER_PICKLE_FILE = 'gridsai-qahumor-encoder-pickle_modified_{}_.pckl'
+DECODER_PICKLE_FILE = 'gridsai-qahumor-decoder-pickle_modified_{}_.pckl'
 
 CHAR_TOKENS = ['\n', '\t', ' ', '.', ',', '!', '?', ':', ';', '$', '#', '@', '%', '^', '&', '*', '(', ')', '-', '_',
                '=', '+', '\\', '/', '|', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
@@ -26,8 +40,35 @@ CHAR_TOKENS = ['\n', '\t', ' ', '.', ',', '!', '?', ':', ';', '$', '#', '@', '%'
                '6', '7', '8', '9', '0', '\"', '\'', '[', ']', '{', '}', '<', '>', '`', '~', '’', 'ø', 'è', '£', 'é',
                '∫', '—', '͡', '°', '͜', 'ʖ', '']
 
-
 def train_model():
+
+    class Checkpoint(Callback):
+        def on_epoch_end(self, epoch, logs={}):
+            if epoch % EPOCH_PERIOD == 0:
+                model.save(TRAINING_MODEL_FILE.format(epoch))
+                encoder_model = Model(encoder_inputs, encoder_states)
+                encoder_model.save(ENCODER_MODEL_FILE.format(epoch))
+
+                decoder_state_input_h = Input(shape=(LATENT_DIM,))
+                decoder_state_input_c = Input(shape=(LATENT_DIM,))
+                decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+                decoder_outputs, state_h, state_c = decoder_lstm(
+                    decoder_inputs, initial_state=decoder_states_inputs)
+                decoder_states = [state_h, state_c]
+                decoder_outputs = decoder_dense(decoder_outputs)
+                decoder_model = Model(
+                    [decoder_inputs] + decoder_states_inputs,
+                    [decoder_outputs] + decoder_states)
+                decoder_model.save(DECODER_MODEL_FILE.format(epoch))
+
+                encoder_pickle_file = open(ENCODER_PICKLE_FILE.format(epoch), 'wb')
+                pickle.dump(max_encoder_seq_length, encoder_pickle_file)
+                encoder_pickle_file.close()
+                decoder_pickle_file = open(DECODER_PICKLE_FILE.format(epoch), 'wb')
+                pickle.dump(max_decoder_seq_length, decoder_pickle_file)
+                decoder_pickle_file.close()
+            return
+
     # Vector-ize the data.
     input_texts = []
     target_texts = []
@@ -38,6 +79,7 @@ def train_model():
         input_text, target_text = str(row[1]).strip('\n'), str(row[2]).strip('\n')
         # We use "tab" as the "start sequence" character
         # for the targets, and "\n" as "end sequence" character.
+        input_text = '\t' + input_text
         target_text = '\t' + target_text + '\n'
         input_texts.append(input_text)
         target_texts.append(target_text)
@@ -100,14 +142,16 @@ def train_model():
     # 'encoder_input_data' & 'decoder_input_data' into 'decoder_target_data'
     model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
 
+    callback = Checkpoint()
     # Run training
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy')
     model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
               batch_size=BATCH_SIZE,
               epochs=EPOCHS,
-              validation_split=0.2)
+              validation_split=0.2,
+              callbacks=[callback])
     # Save model
-    model.save(TRAINING_MODEL_FILE)
+    # model.save(TRAINING_MODEL_FILE)
 
     # Next: inference mode (sampling).
     # Here's the drill:
@@ -118,34 +162,34 @@ def train_model():
     # 3) Repeat with the current target token and current states
 
     # Define sampling models
-    encoder_model = Model(encoder_inputs, encoder_states)
-    encoder_model.save(ENCODER_MODEL_FILE)
-
-    decoder_state_input_h = Input(shape=(LATENT_DIM,))
-    decoder_state_input_c = Input(shape=(LATENT_DIM,))
-    decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-    decoder_outputs, state_h, state_c = decoder_lstm(
-        decoder_inputs, initial_state=decoder_states_inputs)
-    decoder_states = [state_h, state_c]
-    decoder_outputs = decoder_dense(decoder_outputs)
-    decoder_model = Model(
-        [decoder_inputs] + decoder_states_inputs,
-        [decoder_outputs] + decoder_states)
-    decoder_model.save(DECODER_MODEL_FILE)
+    # encoder_model = Model(encoder_inputs, encoder_states)
+    # encoder_model.save(ENCODER_MODEL_FILE)
+    #
+    # decoder_state_input_h = Input(shape=(LATENT_DIM,))
+    # decoder_state_input_c = Input(shape=(LATENT_DIM,))
+    # decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+    # decoder_outputs, state_h, state_c = decoder_lstm(
+    #     decoder_inputs, initial_state=decoder_states_inputs)
+    # decoder_states = [state_h, state_c]
+    # decoder_outputs = decoder_dense(decoder_outputs)
+    # decoder_model = Model(
+    #     [decoder_inputs] + decoder_states_inputs,
+    #     [decoder_outputs] + decoder_states)
+    # decoder_model.save(DECODER_MODEL_FILE)
 
     # Pickle some data for use when decoding
-    encoder_pickle_file = open(ENCODER_PICKLE_FILE, 'wb')
-    pickle.dump(max_encoder_seq_length, encoder_pickle_file)
-    encoder_pickle_file.close()
-    decoder_pickle_file = open(DECODER_PICKLE_FILE, 'wb')
-    pickle.dump(max_decoder_seq_length, decoder_pickle_file)
-    decoder_pickle_file.close()
+    # encoder_pickle_file = open(ENCODER_PICKLE_FILE, 'wb')
+    # pickle.dump(max_encoder_seq_length, encoder_pickle_file)
+    # encoder_pickle_file.close()
+    # decoder_pickle_file = open(DECODER_PICKLE_FILE, 'wb')
+    # pickle.dump(max_decoder_seq_length, decoder_pickle_file)
+    # decoder_pickle_file.close()
 
 
-def decode_sequence(input_seq, num_decoder_tokens, target_token_index, reverse_target_char_index, max_decoder_seq_length):
+def decode_sequence(input_seq, seed_char, num_decoder_tokens, target_token_index, reverse_target_char_index, max_decoder_seq_length):
     # Load up models and data
-    encoder_model = load_model(ENCODER_MODEL_FILE)
-    decoder_model = load_model(DECODER_MODEL_FILE)
+    encoder_model = load_model(ENCODER_MODEL_FILE.format(EPOCHS-1))
+    decoder_model = load_model(DECODER_MODEL_FILE.format(EPOCHS-1))
 
     # Encode the input as state vectors.
     states_value = encoder_model.predict(input_seq)
@@ -153,12 +197,12 @@ def decode_sequence(input_seq, num_decoder_tokens, target_token_index, reverse_t
     # Generate empty target sequence of length 1.
     target_seq = np.zeros((1, 1, num_decoder_tokens))
     # Populate the first character of target sequence with the start character.
-    target_seq[0, 0, target_token_index['\t']] = 1.
+    target_seq[0, 0, target_token_index[seed_char]] = 1.
 
     # Sampling loop for a batch of sequences
     # (to simplify, here we assume a batch of size 1).
     stop_condition = False
-    decoded_sentence = ''
+    decoded_sentence = seed_char
     while not stop_condition:
         output_tokens, h, c = decoder_model.predict(
             [target_seq] + states_value)
@@ -172,7 +216,9 @@ def decode_sequence(input_seq, num_decoder_tokens, target_token_index, reverse_t
         # or find stop character.
         if (sampled_char == '\n' or
             sampled_char == '.' or
-	    len(decoded_sentence) > max_decoder_seq_length):
+            sampled_char == '!' or
+            sampled_char == '?' or
+	        len(decoded_sentence) > max_decoder_seq_length):
             stop_condition = True
 
         # Update the target sequence (of length 1).
@@ -193,10 +239,10 @@ def forward_pass(jokes_needing_punchlines):
     """
     decoded_sentences = []
 
-    encoder_pickle_file = open(ENCODER_PICKLE_FILE, 'rb')
+    encoder_pickle_file = open(ENCODER_PICKLE_FILE.format(EPOCHS-1), 'rb')
     max_encoder_seq_length = pickle.load(encoder_pickle_file)
     encoder_pickle_file.close()
-    decoder_pickle_file = open(DECODER_PICKLE_FILE, 'rb')
+    decoder_pickle_file = open(DECODER_PICKLE_FILE.format(EPOCHS-1), 'rb')
     # max_decoder_seq_length = pickle.load(decoder_pickle_file)
     max_decoder_seq_length = 50
     decoder_pickle_file.close()
@@ -212,14 +258,14 @@ def forward_pass(jokes_needing_punchlines):
         dtype='float32')
 
     for i, input_text in enumerate(jokes_needing_punchlines):
-        for t, char in enumerate(input_text):
+        for t, char in enumerate(input_text[0]):
             encoder_input_data[i, t, token_index[char]] = 1.
 
     for seq_index in range(len(jokes_needing_punchlines)):
         # Take one sequence for trying out decoding.
         input_seq = encoder_input_data[seq_index: seq_index + 1]
-        decoded_sentence = decode_sequence(input_seq, num_tokens, token_index, reverse_char_index, max_decoder_seq_length)
-        decoded_sentences.append((jokes_needing_punchlines[seq_index], decoded_sentence))
+        decoded_sentence = decode_sequence(input_seq, jokes_needing_punchlines[seq_index][1][0], num_tokens, token_index, reverse_char_index, max_decoder_seq_length)
+        decoded_sentences.append((jokes_needing_punchlines[seq_index][1][0], (jokes_needing_punchlines[seq_index][0], decoded_sentence)))
 
     return decoded_sentences
 
@@ -232,14 +278,15 @@ if TRAIN_MODEL:
     train_model()
 
 # After model is trained, run forward pass with new joke setups that need punchlines
-sents = ['\twhat did one dna say to the other dna?\n',
-                           '\twhat did 0 say to 8?\n',
-                           '\twhat did the trojan say to the bruin?\n',
-                           '\twhat did the fish say when it hit the wall?\n',
-                           '\twhat did mars say to saturn?\n']
-punchlines = forward_pass(sents[0:2])
+sents = [('\twhat did one dna say to the other dna?','do these genes make me look fat?'),
+         ('\twhat did 0 say to 8?','nice belt.'),
+         ('\twhat did the fish say when it hit the wall?','dam'),
+         ('\twhat did mars say to saturn?','give me a ring sometime.'),
+         ('\twhat did the trojan say to the bruin?',"i don't know.")]
+punchlines = forward_pass(sents)
 # Let's see what was generated!
-for punchline in punchlines[:4]:
+for punchline in punchlines:
     print('-')
-    print('Input sentence:', punchline[0])
-    print('Decoded sentence:', punchline[1])
+    print('Input sentence:', punchline[1][0])
+    # print('Supposed seed_char:', punchline[0])
+    print('Decoded sentence:', punchline[1][1])

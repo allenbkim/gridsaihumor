@@ -9,8 +9,8 @@ import os
 # Constants used in execution
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))   # refers to application_top
 APP_STATIC = os.path.join(APP_ROOT, 'static')
-ENCODER_MODEL_FILE = APP_ROOT + '/gridsai-qahumor-encoder-model_modified_240_.h5'
-DECODER_MODEL_FILE = APP_ROOT + '/gridsai-qahumor-decoder-model_modified_240_.h5'
+ENCODER_MODEL_FILE = APP_ROOT + '/gridsai-qahumor-encoder-model.h5'
+DECODER_MODEL_FILE = APP_ROOT + '/gridsai-qahumor-decoder-model.h5'
 ENCODER_PICKLE_FILE = APP_ROOT + '/gridsai-qahumor-encoder-pickle.pckl'
 DECODER_PICKLE_FILE = APP_ROOT + '/gridsai-qahumor-decoder-pickle.pckl'
 CHAR_TOKENS = ['\n', '\t', ' ', '.', ',', '!', '?', ':', ';', '$', '#', '@', '%', '^', '&', '*', '(', ')', '-', '_',
